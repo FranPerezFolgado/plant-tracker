@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import logging
 import os
+from datetime import datetime, timezone
 from typing import Any, Mapping
 
 from influxdb_client import InfluxDBClient, Point, WritePrecision
@@ -105,6 +106,71 @@ class InfluxManager:
         for table in tables:
             records.extend(table.records)
         return records
+
+    def list_devices(self, measurement: str = "zigbee_sensor", lookback: str = "30d") -> list[str]:
+        query = f"""
+from(bucket: "{self.bucket}")
+  |> range(start: -{lookback})
+  |> filter(fn: (r) => r._measurement == "{measurement}")
+  |> keep(columns: ["device"])
+  |> distinct(column: "device")
+"""
+        records = self.query_sensor_data(query)
+        devices: set[str] = set()
+        for record in records:
+            try:
+                device = record.values.get("device")
+            except Exception:
+                device = None
+            if isinstance(device, str) and device:
+                devices.add(device)
+        return sorted(devices)
+
+    def latest_fields(
+        self,
+        device: str,
+        measurement: str = "zigbee_sensor",
+        lookback: str = "24h",
+    ) -> tuple[datetime | None, dict[str, float]]:
+        query = f"""
+from(bucket: "{self.bucket}")
+  |> range(start: -{lookback})
+  |> filter(fn: (r) => r._measurement == "{measurement}")
+  |> filter(fn: (r) => r.device == "{device}")
+  |> last()
+"""
+        records = self.query_sensor_data(query)
+
+        fields: dict[str, float] = {}
+        latest_time: datetime | None = None
+
+        for record in records:
+            values = getattr(record, "values", None)
+            if not isinstance(values, dict):
+                continue
+
+            field = values.get("_field")
+            value = values.get("_value")
+            time = values.get("_time")
+
+            if isinstance(field, str) and isinstance(value, (int, float)) and not isinstance(value, bool):
+                fields[field] = float(value)
+
+            # _time is typically a datetime; accept strings defensively.
+            if isinstance(time, datetime):
+                if time.tzinfo is None:
+                    time = time.replace(tzinfo=timezone.utc)
+                latest_time = time if latest_time is None or time > latest_time else latest_time
+            elif isinstance(time, str):
+                try:
+                    parsed = datetime.fromisoformat(time.replace("Z", "+00:00"))
+                    if parsed.tzinfo is None:
+                        parsed = parsed.replace(tzinfo=timezone.utc)
+                    latest_time = parsed if latest_time is None or parsed > latest_time else latest_time
+                except Exception:
+                    pass
+
+        return latest_time, fields
 
     def close(self) -> None:
         """

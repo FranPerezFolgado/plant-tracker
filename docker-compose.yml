@@ -12,6 +12,11 @@ services:
       - mosquitto_data:/mosquitto/data
       - mosquitto_log:/mosquitto/log
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mosquitto_sub", "-h", "localhost", "-p", "1883", "-t", "$$SYS/broker/version", "-C", "1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
 
   # ── Time-Series Database (InfluxDB v2) ───────────────────────────────────
   influxdb:
@@ -22,18 +27,24 @@ services:
     environment:
       # Initial setup — change these values before deploying to production.
       DOCKER_INFLUXDB_INIT_MODE: setup
-      DOCKER_INFLUXDB_INIT_USERNAME: admin
-      DOCKER_INFLUXDB_INIT_PASSWORD: adminpassword   # TODO: use a secret
-      DOCKER_INFLUXDB_INIT_ORG: plant-tracker
-      DOCKER_INFLUXDB_INIT_BUCKET: sensors
-      DOCKER_INFLUXDB_INIT_ADMIN_TOKEN: changeme-token  # TODO: use a secret
+      DOCKER_INFLUXDB_INIT_USERNAME: ${INFLUXDB_INIT_USERNAME:-admin}
+      DOCKER_INFLUXDB_INIT_PASSWORD: ${INFLUXDB_INIT_PASSWORD:-adminpassword}
+      DOCKER_INFLUXDB_INIT_ORG: ${INFLUXDB_ORG:-plant-tracker}
+      DOCKER_INFLUXDB_INIT_BUCKET: ${INFLUXDB_BUCKET:-sensors}
+      DOCKER_INFLUXDB_INIT_ADMIN_TOKEN: ${INFLUXDB_ADMIN_TOKEN:-changeme-token}
     volumes:
       - influxdb_data:/var/lib/influxdb2
       - influxdb_config:/etc/influxdb2
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8086/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
 
   # ── Plant Tracker Application ────────────────────────────────────────────
   app:
+    image: plant-tracker-app:latest
     build:
       context: .
       dockerfile: Dockerfile
@@ -42,18 +53,23 @@ services:
       - "8000:8000"
     environment:
       # MQTT
-      MQTT_BROKER_HOST: mosquitto
-      MQTT_BROKER_PORT: "1883"
-      MQTT_TOPIC: zigbee2mqtt/#
+      MQTT_BROKER_HOST: ${MQTT_BROKER_HOST:-mosquitto}
+      MQTT_BROKER_PORT: ${MQTT_BROKER_PORT:-1883}
+      MQTT_TOPIC: ${MQTT_TOPIC:-zigbee2mqtt/#}
       # InfluxDB
-      INFLUXDB_URL: http://influxdb:8086
-      INFLUXDB_TOKEN: changeme-token  # TODO: use a secret / Docker secret
-      INFLUXDB_ORG: plant-tracker
-      INFLUXDB_BUCKET: sensors
+      INFLUXDB_URL: ${INFLUXDB_URL:-http://influxdb:8086}
+      INFLUXDB_TOKEN: ${INFLUXDB_TOKEN:-changeme-token}
+      INFLUXDB_ORG: ${INFLUXDB_ORG:-plant-tracker}
+      INFLUXDB_BUCKET: ${INFLUXDB_BUCKET:-sensors}
     depends_on:
       - mosquitto
       - influxdb
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
 
 # ── Named Volumes ────────────────────────────────────────────────────────────
 volumes:

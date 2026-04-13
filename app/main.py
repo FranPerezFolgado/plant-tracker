@@ -10,6 +10,8 @@ Responsibilities:
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
+from datetime import datetime
+from typing import Any
 
 from fastapi import FastAPI
 
@@ -82,3 +84,41 @@ async def health_check():
         "influx_bucket": getattr(state.influx, "bucket", None) if state else None,
         "influx_org": getattr(state.influx, "org", None) if state else None,
     }
+
+
+@app.get("/devices", tags=["Devices"])
+async def list_devices():
+    state: AppState | None = getattr(app.state, "state", None)
+    if state is None:
+        return {"devices": []}
+    return {"devices": state.influx.list_devices()}
+
+
+@app.get("/devices/{device}/latest", tags=["Devices"])
+async def latest_device(device: str):
+    state: AppState | None = getattr(app.state, "state", None)
+    if state is None:
+        return {"device": device, "time": None, "fields": {}}
+
+    time, fields = state.influx.latest_fields(device=device)
+    return {"device": device, "time": _dt_to_iso(time), "fields": fields}
+
+
+@app.get("/devices/latest", tags=["Devices"])
+async def latest_all_devices():
+    state: AppState | None = getattr(app.state, "state", None)
+    if state is None:
+        return {"devices": []}
+
+    devices = state.influx.list_devices()
+    latest: list[dict[str, Any]] = []
+    for device in devices:
+        time, fields = state.influx.latest_fields(device=device)
+        latest.append({"device": device, "time": _dt_to_iso(time), "fields": fields})
+    return {"devices": latest}
+
+
+def _dt_to_iso(dt: datetime | None) -> str | None:
+    if dt is None:
+        return None
+    return dt.isoformat()

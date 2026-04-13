@@ -1,0 +1,15 @@
+@baseUrl = http://localhost:8000
+@device = test_device
+
+### Health
+GET {{baseUrl}}/health
+
+### List devices (planned)
+# GET {{baseUrl}}/devices
+
+### Latest for all devices (planned)
+# GET {{baseUrl}}/devices/latest
+
+### Latest for one device (planned)
+# GET {{baseUrl}}/devices/{{device}}/latest
+
