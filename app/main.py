@@ -7,9 +7,20 @@ Responsibilities:
 - Start background services (MQTT client, InfluxDB connection) on startup.
 """
 
+from __future__ import annotations
+
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+
+from influx_manager import InfluxManager
+from mqtt_client import MQTTClient, ParsedSensorData
+
+
+class AppState:
+    def __init__(self, influx: InfluxManager, mqtt: MQTTClient) -> None:
+        self.influx = influx
+        self.mqtt = mqtt
 
 
 @asynccontextmanager
@@ -18,19 +29,32 @@ async def lifespan(app: FastAPI):
     Manage the application lifecycle using the recommended lifespan context manager.
 
     Code before the ``yield`` runs on startup; code after runs on shutdown.
-
-    TODO: Initialise the MQTTClient and start listening for messages.
-    TODO: Initialise the InfluxManager and verify the connection.
     """
     # ── Startup ───────────────────────────────────────────────────────────
-    # TODO: Create and connect the MQTTClient instance here.
-    # TODO: Create and verify the InfluxManager connection here.
+    influx = InfluxManager()
+
+    def on_sensor_data(parsed: ParsedSensorData) -> None:
+        influx.write_sensor_data(
+            measurement="zigbee_sensor",
+            tags={"device": parsed.device, "topic": parsed.topic},
+            fields=parsed.fields,
+        )
+
+    mqtt = MQTTClient(on_sensor_data=on_sensor_data)
+    mqtt.connect()
+
+    app.state.state = AppState(influx=influx, mqtt=mqtt)
 
     yield  # Application is running
 
     # ── Shutdown ──────────────────────────────────────────────────────────
-    # TODO: Gracefully disconnect the MQTTClient.
-    # TODO: Close the InfluxDB client connection.
+    try:
+        state: AppState | None = getattr(app.state, "state", None)
+        if state is not None:
+            state.mqtt.disconnect()
+            state.influx.close()
+    finally:
+        app.state.state = None
 
 
 app = FastAPI(
@@ -50,5 +74,11 @@ async def health_check():
     Extend this endpoint to also report the status of MQTT and InfluxDB
     connections when the logic is implemented.
     """
-    # TODO: Add MQTT and InfluxDB connectivity status to the response.
-    return {"status": "ok"}
+    state: AppState | None = getattr(app.state, "state", None)
+    return {
+        "status": "ok",
+        "mqtt_connected": bool(state and state.mqtt.is_connected),
+        "influx_configured": bool(state and state.influx.token),
+        "influx_bucket": getattr(state.influx, "bucket", None) if state else None,
+        "influx_org": getattr(state.influx, "org", None) if state else None,
+    }
