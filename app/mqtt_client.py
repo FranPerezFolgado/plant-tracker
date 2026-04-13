@@ -7,9 +7,26 @@ Responsibilities:
 - Parse incoming messages and forward them to the InfluxDB manager.
 """
 
+from __future__ import annotations
+
+import json
+import logging
 import os
-# TODO: Install and import the paho-mqtt library: pip install paho-mqtt
-# import paho.mqtt.client as mqtt
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from typing import Any, Callable, Mapping
+
+import paho.mqtt.client as mqtt
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True, slots=True)
+class ParsedSensorData:
+    device: str
+    topic: str
+    received_at: datetime
+    fields: Mapping[str, float]
 
 
 class MQTTClient:
@@ -20,6 +37,7 @@ class MQTTClient:
         broker_host: str = os.getenv("MQTT_BROKER_HOST", "mosquitto"),
         broker_port: int = int(os.getenv("MQTT_BROKER_PORT", "1883")),
         topic: str = os.getenv("MQTT_TOPIC", "zigbee2mqtt/#"),
+        on_sensor_data: Callable[[ParsedSensorData], None] | None = None,
     ):
         """
         Initialise the MQTT client with broker connection parameters.
@@ -32,27 +50,34 @@ class MQTTClient:
         self.broker_host = broker_host
         self.broker_port = broker_port
         self.topic = topic
-        # TODO: Create the paho mqtt.Client instance.
-        # self.client = mqtt.Client()
+        self._on_sensor_data = on_sensor_data
+
+        self._connected = False
+        self.client = mqtt.Client()
+        self.client.on_connect = self._on_connect
+        self.client.on_message = self._on_message
 
     def connect(self) -> None:
         """
         Establish a connection to the MQTT broker and start the network loop.
-
-        TODO: Call self.client.connect(self.broker_host, self.broker_port).
-        TODO: Register on_connect and on_message callbacks.
-        TODO: Call self.client.loop_start() to run the loop in a background thread.
         """
-        pass
+        logger.info(
+            "Connecting to MQTT broker %s:%s (topic=%s)",
+            self.broker_host,
+            self.broker_port,
+            self.topic,
+        )
+        self.client.connect(self.broker_host, self.broker_port)
+        self.client.loop_start()
 
     def disconnect(self) -> None:
         """
         Stop the network loop and disconnect from the broker cleanly.
-
-        TODO: Call self.client.loop_stop().
-        TODO: Call self.client.disconnect().
         """
-        pass
+        try:
+            self.client.loop_stop()
+        finally:
+            self.client.disconnect()
 
     def _on_connect(self, client, userdata, flags, rc: int) -> None:
         """
@@ -63,12 +88,15 @@ class MQTTClient:
             userdata: Private user data (unused).
             flags: Response flags from the broker.
             rc: Connection result code (0 = success).
-
-        TODO: Log the connection result.
-        TODO: If rc == 0, subscribe to self.topic via client.subscribe(self.topic).
-        TODO: Handle connection errors for non-zero rc values.
         """
-        pass
+        if rc == 0:
+            self._connected = True
+            logger.info("Connected to MQTT broker (rc=%s). Subscribing to %s", rc, self.topic)
+            client.subscribe(self.topic)
+            return
+
+        self._connected = False
+        logger.error("Failed to connect to MQTT broker (rc=%s)", rc)
 
     def _on_message(self, client, userdata, message) -> None:
         """
@@ -78,9 +106,67 @@ class MQTTClient:
             client: The MQTT client instance.
             userdata: Private user data (unused).
             message: The received MQTTMessage object (message.topic, message.payload).
-
-        TODO: Decode message.payload (JSON expected from Zigbee2MQTT).
-        TODO: Extract sensor readings (temperature, humidity, etc.).
-        TODO: Forward the parsed data to the InfluxManager for storage.
         """
-        pass
+        topic = str(getattr(message, "topic", ""))
+        payload_bytes = getattr(message, "payload", b"")
+
+        try:
+            payload_text = payload_bytes.decode("utf-8")
+        except Exception:
+            logger.warning("Non-utf8 MQTT payload on topic=%s", topic, exc_info=True)
+            return
+
+        try:
+            payload = json.loads(payload_text)
+        except json.JSONDecodeError:
+            logger.debug("Non-JSON MQTT payload on topic=%s: %r", topic, payload_text)
+            return
+
+        if not isinstance(payload, dict):
+            logger.debug("Ignoring non-object JSON payload on topic=%s: %r", topic, payload)
+            return
+
+        device = self._device_from_topic(topic)
+        numeric_fields = self._extract_numeric_fields(payload)
+        if not numeric_fields:
+            return
+
+        parsed = ParsedSensorData(
+            device=device,
+            topic=topic,
+            received_at=datetime.now(timezone.utc),
+            fields=numeric_fields,
+        )
+
+        if self._on_sensor_data is None:
+            logger.debug("Parsed sensor data but no sink configured: %s", parsed)
+            return
+
+        try:
+            self._on_sensor_data(parsed)
+        except Exception:
+            logger.exception("Sensor data sink raised; topic=%s device=%s", topic, device)
+
+    @property
+    def is_connected(self) -> bool:
+        return self._connected
+
+    @staticmethod
+    def _device_from_topic(topic: str) -> str:
+        """
+        For Zigbee2MQTT default topics: zigbee2mqtt/<friendlyName>
+        """
+        prefix = "zigbee2mqtt/"
+        if topic.startswith(prefix) and len(topic) > len(prefix):
+            return topic[len(prefix) :]
+        return topic
+
+    @staticmethod
+    def _extract_numeric_fields(payload: Mapping[str, Any]) -> dict[str, float]:
+        fields: dict[str, float] = {}
+        for key, value in payload.items():
+            if isinstance(value, bool):
+                continue
+            if isinstance(value, (int, float)):
+                fields[str(key)] = float(value)
+        return fields
