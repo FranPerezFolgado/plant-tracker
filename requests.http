@@ -4,12 +4,12 @@
 ### Health
 GET {{baseUrl}}/health
 
-### List devices (planned)
-# GET {{baseUrl}}/devices
+### List devices
+GET {{baseUrl}}/devices
 
-### Latest for all devices (planned)
-# GET {{baseUrl}}/devices/latest
+### Latest for all devices
+GET {{baseUrl}}/devices/latest
 
-### Latest for one device (planned)
-# GET {{baseUrl}}/devices/{{device}}/latest
+### Latest for one device
+GET {{baseUrl}}/devices/{{device}}/latest
 

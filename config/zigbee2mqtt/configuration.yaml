@@ -1,0 +1,21 @@
+# Zigbee2MQTT configuration
+# Edit ZIMABOARD_IP before deploying to the Raspberry Pi.
+
+homeassistant: false
+
+# Set to false after all sensors have been paired.
+permit_join: true
+
+mqtt:
+  base_topic: zigbee2mqtt
+  server: mqtt://192.168.1.123:1883   # ← replace with your ZimaBoard's LAN IP
+
+serial:
+  port: /dev/ttyACM0           # Sonoff ZBDongle-P on Raspberry Pi OS
+  adapter: ezsp
+
+frontend:
+  port: 8080                         # Zigbee2MQTT web UI — open http://PIIP:8080
+
+advanced:
+  log_level: info

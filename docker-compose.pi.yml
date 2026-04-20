@@ -1,0 +1,21 @@
+# docker-compose.pi.yml
+# Run this on the Raspberry Pi (where the Zigbee USB dongle is plugged in).
+# The ZimaBoard runs the main docker-compose.yml (Mosquitto, InfluxDB, app).
+#
+# Usage:
+#   docker compose -f docker-compose.pi.yml up -d
+#   docker compose -f docker-compose.pi.yml logs -f
+
+services:
+  zigbee2mqtt:
+    image: koenkk/zigbee2mqtt:latest
+    container_name: zigbee2mqtt
+    restart: unless-stopped
+    volumes:
+      - ./config/zigbee2mqtt:/app/data
+    devices:
+      # Sonoff ZBDongle-P typically shows up as /dev/ttyACM0 on Raspberry Pi OS.
+      # Verify with: ls /dev/ttyACM* /dev/ttyUSB*
+      - /dev/ttyACM0:/dev/ttyACM0
+    environment:
+      - TZ=Europe/Madrid   # adjust to your timezone
