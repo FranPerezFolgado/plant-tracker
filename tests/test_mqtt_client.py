@@ -13,6 +13,7 @@ class _Msg:
 
 def test_device_from_topic_zigbee2mqtt_prefix() -> None:
     assert MQTTClient._device_from_topic("zigbee2mqtt/living_room") == "living_room"
+    assert MQTTClient._device_from_topic("zigbee2mqtt/living_room/availability") == "living_room"
 
 
 def test_device_from_topic_fallback() -> None:
@@ -38,7 +39,7 @@ def test_on_message_emits_parsed_sensor_data_for_valid_json() -> None:
 
     client = MQTTClient(on_sensor_data=sink)
 
-    payload = {"temperature": 20.0, "humidity": 50, "note": "x"}
+    payload = {"temperature": 20.0, "humidity": 50, "note": "x", "dry": True}
     msg = _Msg(topic="zigbee2mqtt/my_device", payload=json.dumps(payload).encode("utf-8"))
 
     client._on_message(client=None, userdata=None, message=msg)
@@ -47,7 +48,7 @@ def test_on_message_emits_parsed_sensor_data_for_valid_json() -> None:
     parsed = received[0]
     assert parsed.device == "my_device"
     assert parsed.topic == "zigbee2mqtt/my_device"
-    assert parsed.fields == {"temperature": 20.0, "humidity": 50.0}
+    assert parsed.fields == {"temperature": 20.0, "humidity": 50, "note": "x", "dry": True}
     assert parsed.received_at.tzinfo is not None
 
 

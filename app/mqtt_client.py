@@ -127,6 +127,11 @@ class MQTTClient:
             return
 
         device = self._device_from_topic(topic)
+        # Zigbee2MQTT publishes internal/control messages under `zigbee2mqtt/bridge/...`.
+        # Those are not actual sensors and should not be stored as "devices".
+        if device == "bridge" or device.startswith("bridge/"):
+            return
+
         fields = self._extract_scalar_fields(payload)
         if not fields:
             return
@@ -158,7 +163,11 @@ class MQTTClient:
         """
         prefix = "zigbee2mqtt/"
         if topic.startswith(prefix) and len(topic) > len(prefix):
-            return topic[len(prefix) :]
+            remainder = topic[len(prefix) :]
+            # Some Zigbee2MQTT messages are published under sub-topics such as:
+            #   zigbee2mqtt/<device>/availability
+            # Use only the first segment as the canonical device identifier.
+            return remainder.split("/", 1)[0]
         return topic
 
     @staticmethod

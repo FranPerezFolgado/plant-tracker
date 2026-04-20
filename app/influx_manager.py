@@ -68,7 +68,15 @@ class InfluxManager:
         for key, value in fields.items():
             if value is None:
                 continue
-            point = point.field(str(key), value)
+            # InfluxDB enforces a single type per field name. Earlier versions of this
+            # app stored numeric fields as floats, so we normalize ints to floats to
+            # avoid "field type conflict" partial writes (e.g. battery: int vs float).
+            if isinstance(value, bool):
+                point = point.field(str(key), value)
+            elif isinstance(value, int):
+                point = point.field(str(key), float(value))
+            else:
+                point = point.field(str(key), value)
 
         try:
             self.write_api.write(
@@ -112,6 +120,7 @@ class InfluxManager:
 from(bucket: "{self.bucket}")
   |> range(start: -{lookback})
   |> filter(fn: (r) => r._measurement == "{measurement}")
+  |> filter(fn: (r) => r.device != "bridge" and r.device !~ /^bridge\\//)
   |> keep(columns: ["device"])
   |> distinct(column: "device")
 """
