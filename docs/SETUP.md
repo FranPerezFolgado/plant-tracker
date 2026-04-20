@@ -17,11 +17,13 @@ cp .env.example .env
 
 Edit `.env` and set at minimum:
 
-| Variable | What to set |
-|---|---|
-| `INFLUXDB_ADMIN_TOKEN` | A strong random string (e.g. `openssl rand -hex 32`) |
-| `INFLUXDB_INIT_PASSWORD` | A strong password for the InfluxDB admin user |
-| `INFLUXDB_TOKEN` | Same value as `INFLUXDB_ADMIN_TOKEN` |
+
+| Variable                 | What to set                                          |
+| ------------------------ | ---------------------------------------------------- |
+| `INFLUXDB_ADMIN_TOKEN`   | A strong random string (e.g. `openssl rand -hex 32`) |
+| `INFLUXDB_INIT_PASSWORD` | A strong password for the InfluxDB admin user        |
+| `INFLUXDB_TOKEN`         | Same value as `INFLUXDB_ADMIN_TOKEN`                 |
+
 
 The other defaults (`plant-tracker` org, `sensors` bucket, port `8086`) are fine as-is.
 
@@ -32,6 +34,7 @@ docker compose up -d
 ```
 
 This starts:
+
 - **Mosquitto** on port `1883` (MQTT broker — accessible from the Pi)
 - **InfluxDB** on port `8086` (UI at `http://ZIMABOARD_IP:8086`)
 - **Plant Tracker API** on port `8000`
@@ -47,6 +50,7 @@ curl http://localhost:8000/health
 ```
 
 Expected response:
+
 ```json
 {"status": "ok", "mqtt_connected": true, "influx_configured": true, ...}
 ```
@@ -113,6 +117,7 @@ docker logs -f zigbee2mqtt
 ```
 
 Look for a line like:
+
 ```
 Zigbee2MQTT:info  Connected to MQTT server
 ```
@@ -126,37 +131,27 @@ The Zigbee2MQTT web UI is available at `http://PIIP:8080`.
 With `permit_join: true` set in the config (the default), the coordinator is ready to accept new devices.
 
 1. Trigger pairing mode on a sensor:
-   - Most Zigbee soil sensors: hold the reset/pair button for 5 seconds, or remove and reinsert the battery.
-   - The sensor LED usually flashes rapidly when in pairing mode.
-
+  - Most Zigbee soil sensors: hold the reset/pair button for 5 seconds, or remove and reinsert the battery.
+  - The sensor LED usually flashes rapidly when in pairing mode.
 2. Watch the logs on the Pi:
-   ```bash
+  ```bash
    docker logs -f zigbee2mqtt
-   ```
+  ```
    You should see a message like:
-   ```
-   New device joined: 0x00158d0001234567 (sensor friendly name)
-   ```
-
 3. Repeat for each sensor.
-
 4. **Optional — rename sensors** for readable API output. Edit `config/zigbee2mqtt/configuration.yaml` on the Pi and add a `devices:` block:
-   ```yaml
+  ```yaml
    devices:
      '0x00158d0001234567':
        friendly_name: plant_livingroom
      '0x00158d0007654321':
        friendly_name: plant_bedroom
-   ```
+  ```
    Then restart:
-   ```bash
-   docker compose -f docker-compose.pi.yml restart
-   ```
-
 5. **Disable join mode** once all sensors are paired:
-   ```yaml
+  ```yaml
    permit_join: false
-   ```
+  ```
    Restart Zigbee2MQTT again.
 
 ---
@@ -180,11 +175,22 @@ You can also browse the raw data in InfluxDB at `http://ZIMABOARD_IP:8086` → D
 
 ---
 
+## 5. Glance dashboard
+
+If you use the Glance self-hosted dashboard, you can display the latest sensor readings directly from the API using a `custom-api` widget.
+
+See [`docs/GLANCE.md`](GLANCE.md).
+
+---
+
 ## Troubleshooting
 
-| Symptom | Check |
-|---|---|
-| `mqtt_connected: false` in `/health` | MQTT broker is not running, or firewall blocks port 1883 |
-| No devices in `/devices` | Sensors haven't sent data in the last 30 days, or Zigbee2MQTT isn't connected |
-| `zigbee2mqtt` log: "Cannot open serial port" | Wrong device path — check `ls /dev/ttyACM* /dev/ttyUSB*` on the Pi |
-| Sensor doesn't pair | Hold pairing button longer; ensure `permit_join: true` and Zigbee2MQTT is running |
+
+| Symptom                                      | Check                                                                             |
+| -------------------------------------------- | --------------------------------------------------------------------------------- |
+| `mqtt_connected: false` in `/health`         | MQTT broker is not running, or firewall blocks port 1883                          |
+| No devices in `/devices`                     | Sensors haven't sent data in the last 30 days, or Zigbee2MQTT isn't connected     |
+| `zigbee2mqtt` log: "Cannot open serial port" | Wrong device path — check `ls /dev/ttyACM* /dev/ttyUSB*` on the Pi                |
+| Sensor doesn't pair                          | Hold pairing button longer; ensure `permit_join: true` and Zigbee2MQTT is running |
+
+

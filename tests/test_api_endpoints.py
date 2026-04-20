@@ -13,7 +13,14 @@ class _FakeInflux:
 
     def latest_fields(self, device: str):
         if device == "devA":
-            return datetime(2026, 1, 1, 0, 0, 0, tzinfo=timezone.utc), {"temperature": 21.5}
+            return datetime(2026, 1, 1, 0, 0, 0, tzinfo=timezone.utc), {
+                "battery": 75,
+                "dry": True,
+                "humidity": 59,
+                "soil_moisture": 0,
+                "temperature": 24.7,
+                "temperature_unit": "celsius",
+            }
         return None, {}
 
 
@@ -40,7 +47,9 @@ def test_get_device_latest_returns_time_and_fields() -> None:
     body = res.json()
     assert body["device"] == "devA"
     assert body["time"] == "2026-01-01T00:00:00+00:00"
-    assert body["fields"] == {"temperature": 21.5}
+    assert body["fields"]["temperature"] == 24.7
+    assert body["fields"]["dry"] is True
+    assert body["fields"]["temperature_unit"] == "celsius"
 
 
 def test_get_devices_latest_returns_all() -> None:

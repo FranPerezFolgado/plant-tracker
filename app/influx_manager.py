@@ -131,7 +131,7 @@ from(bucket: "{self.bucket}")
         device: str,
         measurement: str = "zigbee_sensor",
         lookback: str = "24h",
-    ) -> tuple[datetime | None, dict[str, float]]:
+    ) -> tuple[datetime | None, dict[str, Any]]:
         query = f"""
 from(bucket: "{self.bucket}")
   |> range(start: -{lookback})
@@ -141,7 +141,7 @@ from(bucket: "{self.bucket}")
 """
         records = self.query_sensor_data(query)
 
-        fields: dict[str, float] = {}
+        fields: dict[str, Any] = {}
         latest_time: datetime | None = None
 
         for record in records:
@@ -153,8 +153,8 @@ from(bucket: "{self.bucket}")
             value = values.get("_value")
             time = values.get("_time")
 
-            if isinstance(field, str) and isinstance(value, (int, float)) and not isinstance(value, bool):
-                fields[field] = float(value)
+            if isinstance(field, str) and value is not None and isinstance(value, (bool, int, float, str)):
+                fields[field] = value
 
             # _time is typically a datetime; accept strings defensively.
             if isinstance(time, datetime):

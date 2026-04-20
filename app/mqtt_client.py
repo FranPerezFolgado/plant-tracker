@@ -26,7 +26,7 @@ class ParsedSensorData:
     device: str
     topic: str
     received_at: datetime
-    fields: Mapping[str, float]
+    fields: Mapping[str, Any]
 
 
 class MQTTClient:
@@ -127,15 +127,15 @@ class MQTTClient:
             return
 
         device = self._device_from_topic(topic)
-        numeric_fields = self._extract_numeric_fields(payload)
-        if not numeric_fields:
+        fields = self._extract_scalar_fields(payload)
+        if not fields:
             return
 
         parsed = ParsedSensorData(
             device=device,
             topic=topic,
             received_at=datetime.now(timezone.utc),
-            fields=numeric_fields,
+            fields=fields,
         )
 
         if self._on_sensor_data is None:
@@ -163,10 +163,21 @@ class MQTTClient:
 
     @staticmethod
     def _extract_numeric_fields(payload: Mapping[str, Any]) -> dict[str, float]:
-        fields: dict[str, float] = {}
+        # Backwards-compatible alias kept for external callers/tests.
+        return {k: float(v) for k, v in MQTTClient._extract_scalar_fields(payload).items() if isinstance(v, (int, float)) and not isinstance(v, bool)}
+
+    @staticmethod
+    def _extract_scalar_fields(payload: Mapping[str, Any]) -> dict[str, Any]:
+        """
+        Extract scalar (InfluxDB-field-compatible) values from a Zigbee2MQTT payload.
+
+        We intentionally skip complex types (objects/arrays) to avoid writing nested
+        structures into InfluxDB fields.
+        """
+        fields: dict[str, Any] = {}
         for key, value in payload.items():
-            if isinstance(value, bool):
+            if value is None:
                 continue
-            if isinstance(value, (int, float)):
-                fields[str(key)] = float(value)
+            if isinstance(value, (bool, int, float, str)):
+                fields[str(key)] = value
         return fields
